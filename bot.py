@@ -1,5 +1,6 @@
 import os
 import logging
+import threading
 from flask import Flask
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -47,21 +48,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("Не удалось скачать.")
 
+def run_flask():
+    """Запускает Flask-сервер в фоновом потоке"""
+    port = int(os.environ.get("PORT", 10000))
+    app_flask.run(host='0.0.0.0', port=port)
+
 def main():
-    # Запуск бота
+    # Запускаем Flask в фоновом потоке
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    logging.info("Flask запущен в фоновом потоке")
+
+    # Запускаем Telegram-бота в ОСНОВНОМ потоке
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    
-    # Запускаем бота в фоне (без ожидания)
-    import threading
-    def run_bot():
-        app.run_polling()
-    threading.Thread(target=run_bot, daemon=True).start()
-    
-    # Запускаем Flask (для порта)
-    port = int(os.environ.get("PORT", 10000))
-    app_flask.run(host='0.0.0.0', port=port)
+
+    logging.info("Бот запускается...")
+    app.run_polling()  # <-- Теперь это в главном потоке!
 
 if __name__ == "__main__":
     main()
