@@ -1,6 +1,5 @@
 import os
 import logging
-import threading
 from flask import Flask
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -10,19 +9,19 @@ import yt_dlp
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Токен из переменной окружения
 TOKEN = os.environ.get("BOT_TOKEN")
 if not TOKEN:
-    raise ValueError("BOT_TOKEN не задан!")
+    logger.error("BOT_TOKEN не задан!")
+    exit(1)
 
-# Flask-приложение для порта
+# Flask для порта
 app_flask = Flask(__name__)
 
 @app_flask.route('/')
 def home():
-    return "🤖 IriSSave Bot is running! Find me on Telegram."
+    return "IriSSave Bot is running!"
 
-# Функция скачивания
+# Скачивание
 def download_video(url):
     try:
         os.makedirs('downloads', exist_ok=True)
@@ -33,23 +32,19 @@ def download_video(url):
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info)
-            return filename
+            return ydl.prepare_filename(info)
     except Exception as e:
         logger.error(f"Ошибка скачивания: {e}")
         return None
 
-# Команда /start
+# Команды
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Привет! 👋\nОтправь ссылку из Instagram, TikTok или YouTube — я скачаю."
-    )
+    await update.message.reply_text("Привет! Отправь ссылку из Instagram, TikTok или YouTube.")
 
-# Обработка ссылок
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
     if not url.startswith(("http://", "https://")):
-        await update.message.reply_text("Отправь ссылку, начинающуюся с http:// или https://")
+        await update.message.reply_text("Отправь ссылку!")
         return
     await update.message.reply_text("⏳ Скачиваю...")
     filename = download_video(url)
@@ -61,27 +56,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             await update.message.reply_text(f"Ошибка: {e}")
     else:
-        await update.message.reply_text("Не удалось скачать. Проверь ссылку.")
+        await update.message.reply_text("Не удалось скачать.")
 
-# Функция для запуска Flask в фоновом потоке
-def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    app_flask.run(host='0.0.0.0', port=port, debug=False)
-
-# Основная функция
+# Запуск
 def main():
-    # Запускаем Flask в фоне
-    threading.Thread(target=run_flask, daemon=True).start()
-    logger.info("Flask запущен")
-
-    # Создаём приложение бота
+    # Создаём приложение
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # Запускаем polling с автоматическим удалением вебхука
-    logger.info("Запуск polling...")
+    # Запускаем поллинг с удалением вебхука
+    logger.info("Бот запускается...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
+    # Запускаем Flask в отдельном потоке
+    import threading
+    def run_flask():
+        port = int(os.environ.get("PORT", 10000))
+        app_flask.run(host='0.0.0.0', port=port)
+    threading.Thread(target=run_flask, daemon=True).start()
+    # Запускаем бота в главном потоке
     main()
